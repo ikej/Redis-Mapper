@@ -10,24 +10,23 @@ using SubSonic.Extensions;
 using SubSonic.Query;
 using System.Collections;
 using System.Configuration;
+using System.Net.Sockets;
 
 namespace RedisMapper
 {
     public class RedisService : IRedisService, IDisposable
     {
         #region Redis Client instance
-        private static volatile IRedisClient redisInstance;
-        private static object syncRoot = new Object();
+        private static IRedisClient redisInstance;
+        private object syncRoot = new Object();
         public static IRedisClient Redis
         {
             get
             {
                 if (redisInstance == null)
                 {
-                    lock (syncRoot)
-                    {
-                        redisInstance = new RedisClient(ConfigurationManager.AppSettings["redis_server_ip"], ConfigurationManager.AppSettings["redis_server_port"].ToInt32());
-                    }
+                    PooledRedisClientManager redisClientManager = new PooledRedisClientManager(string.Format("{0}:{1}", ConfigurationManager.AppSettings["redis_server"], ConfigurationManager.AppSettings["redis_server_port"].ToInt32()));
+                    redisInstance = redisClientManager.GetClient();
                 }
 
                 return redisInstance;
@@ -36,28 +35,31 @@ namespace RedisMapper
         #endregion
 
         #region CRUD operations
-        public string Add<T>(T model) where T : IRedisModel
+        public virtual string Add<T>(T model) where T : IRedisModel
         {
-            if (model == null) return null;
-            if (string.IsNullOrWhiteSpace(model.Id))
+            lock (syncRoot)
             {
-                model.Id = NextId<T>().ToString();
+                if (model == null) return null;
+                if (string.IsNullOrWhiteSpace(model.Id))
+                {
+                    model.Id = NextId<T>().ToString();
+                }
+                if (Get<T>(model.Id) != null) return null;
+
+                string modelKey = GetKey<T>(model);
+
+                Redis.Set<T>(modelKey, model);
+
+                Redis.AddItemToSortedSet(RedisKeyFactory.ListAllKeys<T>(), modelKey, model.CreateDateTime.Ticks);
+
+                Redis.IncrementValue(RedisKeyFactory.ListAllNumKeys<T>());
+
+                Redis.IncrementValue(RedisKeyFactory.NextKey<T>());
+
+                BuildIndex<T>(model);
+
+                return model.Id;
             }
-            if (Get<T>(model.Id) != null) return null;
-
-            string modelKey = GetKey<T>(model);
-
-            Redis.Set<T>(modelKey, model);
-
-            Redis.AddItemToSortedSet(RedisKeyFactory.ListAllKeys<T>(), modelKey, model.CreateDateTime.Ticks);
-
-            Redis.IncrementValue(RedisKeyFactory.ListAllNumKeys<T>());
-
-            Redis.IncrementValue(RedisKeyFactory.NextKey<T>());
-
-            BuildIndex<T>(model);
-
-            return model.Id;
         }
 
         /// <summary>
@@ -65,228 +67,285 @@ namespace RedisMapper
         /// </summary>
         /// <param name="originalApp">app instance before update</param>
         /// <param name="updatedApp">app instance after update</param>
-        public void UpdateWithRebuildIndex<T>(T originalModel, T updatedModel) where T : IRedisModel
+        public virtual void UpdateWithRebuildIndex<T>(T originalModel, T updatedModel) where T : IRedisModel
         {
-            if (originalModel == null) throw new ArgumentNullException("originalModel");
-            if (updatedModel == null) throw new ArgumentNullException("updatedModel");
+            lock (syncRoot)
+            {
+                if (originalModel == null) throw new ArgumentNullException("originalModel");
+                if (updatedModel == null) throw new ArgumentNullException("updatedModel");
 
-            if (!originalModel.Id.EqualsOrdinalIgnoreCase(updatedModel.Id)) throw new ArgumentException("The two model have different ids.");
+                if (!originalModel.Id.EqualsOrdinalIgnoreCase(updatedModel.Id)) throw new ArgumentException("The two model have different ids.");
 
-            Delete<T>(originalModel, false);
-            Add<T>(updatedModel);
+                Delete<T>(originalModel, false);
+                Add<T>(updatedModel);
+            }
         }
 
-        public void Update<T>(T model) where T : IRedisModel
+        public virtual void Update<T>(T model) where T : IRedisModel
         {
-            string modelKey = GetKey<T>(model);
-            Redis.Set<T>(modelKey, model);
-        }
-
-        public void Delete<T>(T model, bool IsRemoveSubModel = true) where T : IRedisModel
-        {
-            if (model != null)
+            lock (syncRoot)
             {
                 string modelKey = GetKey<T>(model);
+                Redis.Set<T>(modelKey, model);
+            }
+        }
 
-                Redis.Remove(modelKey);
-
-                Redis.RemoveItemFromSortedSet(RedisKeyFactory.ListAllKeys<T>(), modelKey);
-
-                Redis.IncrementValueBy(RedisKeyFactory.ListAllNumKeys<T>(), -1);
-
-                if (GetAllCount<T>() == 0)
+        public virtual void Delete<T>(T model, bool IsRemoveSubModel = true) where T : IRedisModel
+        {
+            lock (syncRoot)
+            {
+                if (model != null)
                 {
-                    Redis.Remove(RedisKeyFactory.ListAllNumKeys<T>());
+                    string modelKey = GetKey<T>(model);
+
+                    Redis.Remove(modelKey);
+
+                    Redis.RemoveItemFromSortedSet(RedisKeyFactory.ListAllKeys<T>(), modelKey);
+
+                    Redis.IncrementValueBy(RedisKeyFactory.ListAllNumKeys<T>(), -1);
+
+                    if (GetAllCount<T>() == 0)
+                    {
+                        Redis.Remove(RedisKeyFactory.ListAllNumKeys<T>());
+                    }
+
+                    BuildIndex<T>(model, true);
+
+                    if (IsRemoveSubModel)
+                        Redis.Remove(RedisKeyFactory.SubModelKey<T>(model.Id));
                 }
-
-                BuildIndex<T>(model, true);
-
-                if (IsRemoveSubModel)
-                    Redis.Remove(RedisKeyFactory.SubModelKey<T>(model.Id));
             }
         }
 
         public void SetActive<T>(bool isActive, string id) where T : IRedisModel
         {
-            if (isActive)
+            lock (syncRoot)
             {
-                var model = Get<T>(id);
-                if (model != null)
+                if (isActive)
                 {
-                    Redis.AddItemToSortedSet(RedisKeyFactory.ListAllKeys<T>(), GetKey<T>(id), model.CreateDateTime.Ticks);
+                    var model = Get<T>(id);
+                    if (model != null)
+                    {
+                        Redis.AddItemToSortedSet(RedisKeyFactory.ListAllKeys<T>(), GetKey<T>(id), model.CreateDateTime.Ticks);
+                    }
                 }
-            }
-            else
-            {
-                Redis.RemoveItemFromSortedSet(RedisKeyFactory.ListAllKeys<T>(), GetKey<T>(id));
+                else
+                {
+                    Redis.RemoveItemFromSortedSet(RedisKeyFactory.ListAllKeys<T>(), GetKey<T>(id));
+                }
             }
         }
 
         public bool IsActive<T>(string id) where T : IRedisModel
         {
-            return Redis.SortedSetContainsItem(RedisKeyFactory.ListAllKeys<T>(), GetKey<T>(id));
+            lock (syncRoot)
+            {
+                return Redis.SortedSetContainsItem(RedisKeyFactory.ListAllKeys<T>(), GetKey<T>(id));
+            }
         }
 
         public bool IsExist<T>(string id)
             where T : IRedisModel
         {
-            return Redis.ContainsKey(GetKey<T>(id));
+            lock (syncRoot)
+            {
+                return Redis.ContainsKey(GetKey<T>(id));
+            }
         }
 
 
         public T Get<T>(string id) where T : IRedisModel
         {
-            return Redis.Get<T>(GetKey<T>(id));
+            lock (syncRoot)
+            {
+                return Redis.Get<T>(GetKey<T>(id));
+            }
         }
 
         public int GetAllCount<T>()
             where T : IRedisModel
         {
-            return Redis.Get<int>(RedisKeyFactory.ListAllNumKeys<T>());
+            lock (syncRoot)
+            {
+                return Redis.Get<int>(RedisKeyFactory.ListAllNumKeys<T>());
+            }
         }
 
         public int NextId<T>()
              where T : IRedisModel
         {
-            int id = Redis.Get<int>(RedisKeyFactory.NextKey<T>()) + 1;
-
-            while (IsExist<T>(id.ToString()))
+            lock (syncRoot)
             {
-                id++;
-                Redis.IncrementValue(RedisKeyFactory.NextKey<T>());
-            }
+                int id = Redis.Get<int>(RedisKeyFactory.NextKey<T>()) + 1;
 
-            return id;
+                while (IsExist<T>(id.ToString()))
+                {
+                    id++;
+                    Redis.IncrementValue(RedisKeyFactory.NextKey<T>());
+                }
+
+                return id;
+            }
         }
 
         public List<string> GetAllActiveModelIds<T>() where T : IRedisModel
         {
-            return Redis.GetRangeFromSortedSetDesc(RedisKeyFactory.ListAllKeys<T>(), 0, -1);
+            lock (syncRoot)
+            {
+                return Redis.GetRangeFromSortedSetDesc(RedisKeyFactory.ListAllKeys<T>(), 0, -1);
+            }
         }
 
         public List<string> GetPagedModelIds<T>(int pageNum, int pageSize, string propertyName = "", bool isAsc = false) where T : IRedisModel
         {
-            int start = (pageNum - 1) * pageSize;
-            int end = pageNum * pageSize - 1;
-
-            if (pageNum == 0) // get all
+            lock (syncRoot)
             {
-                start = 0;
-                end = -1;
-            }
+                int start = (pageNum - 1) * pageSize;
+                int end = pageNum * pageSize - 1;
 
-            if (string.IsNullOrWhiteSpace(propertyName))
-            {
-                if (isAsc)
+                if (pageNum == 0) // get all
                 {
-                    return Redis.GetRangeFromSortedSet(RedisKeyFactory.ListAllKeys<T>(), start, end);
+                    start = 0;
+                    end = -1;
+                }
+
+                if (string.IsNullOrWhiteSpace(propertyName))
+                {
+                    if (isAsc)
+                    {
+                        return Redis.GetRangeFromSortedSet(RedisKeyFactory.ListAllKeys<T>(), start, end);
+                    }
+                    else
+                    {
+                        return Redis.GetRangeFromSortedSetDesc(RedisKeyFactory.ListAllKeys<T>(), start, end);
+                    }
                 }
                 else
                 {
-                    return Redis.GetRangeFromSortedSetDesc(RedisKeyFactory.ListAllKeys<T>(), start, end);
-                }
-            }
-            else
-            {
-                string queryKey = RedisKeyFactory.QueryKeyWithProperty<T>(propertyName);
-                if (isAsc)
-                {
-                    return Redis.GetRangeFromSortedSet(queryKey, start, end);
-                }
-                else
-                {
-                    return Redis.GetRangeFromSortedSetDesc(queryKey, start, end);
+                    string queryKey = RedisKeyFactory.QueryKeyWithProperty<T>(propertyName);
+                    if (isAsc)
+                    {
+                        return Redis.GetRangeFromSortedSet(queryKey, start, end);
+                    }
+                    else
+                    {
+                        return Redis.GetRangeFromSortedSetDesc(queryKey, start, end);
+                    }
                 }
             }
         }
 
         public List<T> GetValuesByIds<T>(List<string> ids, bool needKeyFormat = false)
         {
-            List<T> results = new List<T>();
-            if (needKeyFormat)
+            lock (syncRoot)
             {
-                for (int i = 0; i < ids.Count; i++)
+                List<T> results = new List<T>();
+                if (needKeyFormat)
                 {
-                    ids[i] = RedisKeyFactory.ModelKey<T>(ids[i]);
+                    for (int i = 0; i < ids.Count; i++)
+                    {
+                        ids[i] = RedisKeyFactory.ModelKey<T>(ids[i]);
+                    }
+                    results = Redis.GetValues<T>(ids);
                 }
-                results = Redis.GetValues<T>(ids);
-            }
-            else
-            {
-                results = Redis.GetValues<T>(ids);
-            }
+                else
+                {
+                    results = Redis.GetValues<T>(ids);
+                }
 
-            return results == null ? new List<T>() : results;
+                return results == null ? new List<T>() : results;
+            }
         }
         #endregion
 
         #region SUB Model (one to many relation)
-        public bool SetSubModel<TModel, TSubModel>(string modelId, TSubModel subModel)
+        public virtual bool SetSubModel<TModel, TSubModel>(string modelId, TSubModel subModel)
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            return Redis.SetEntryInHash(RedisKeyFactory.SubModelKey<TModel>(modelId), GetKey<TSubModel>(subModel), JsonConvert.SerializeObject(subModel));
+            lock (syncRoot)
+            {
+                return Redis.SetEntryInHash(RedisKeyFactory.SubModelKey<TModel>(modelId), GetKey<TSubModel>(subModel), JsonConvert.SerializeObject(subModel));
+            }
         }
 
         public TSubModel GetSubModel<TModel, TSubModel>(string modelId, string subModelId, bool isFullSubModelKey = false)
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            var subModelJSONString = Redis.GetValueFromHash(RedisKeyFactory.SubModelKey<TModel>(modelId), isFullSubModelKey ? subModelId : GetKey<TSubModel>(subModelId));
-            if (string.IsNullOrWhiteSpace(subModelJSONString))
+            lock (syncRoot)
             {
-                return default(TSubModel);
-            }
-            else
-            {
-                return JsonConvert.DeserializeObject<TSubModel>(subModelJSONString);
+                var subModelJSONString = Redis.GetValueFromHash(RedisKeyFactory.SubModelKey<TModel>(modelId), isFullSubModelKey ? subModelId : GetKey<TSubModel>(subModelId));
+                if (string.IsNullOrWhiteSpace(subModelJSONString))
+                {
+                    return default(TSubModel);
+                }
+                else
+                {
+                    return JsonConvert.DeserializeObject<TSubModel>(subModelJSONString);
+                }
             }
         }
 
         public List<string> GetAllSubModelIds<TModel>(string modelId)
             where TModel : IRedisModel
         {
-            return Redis.GetHashKeys(RedisKeyFactory.SubModelKey<TModel>(modelId));
+            lock (syncRoot)
+            {
+                return Redis.GetHashKeys(RedisKeyFactory.SubModelKey<TModel>(modelId));
+            }
         }
 
         public List<string> GetAllSubModelIdsByType<TModel, TSubModel>(string modelId)
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            return GetAllSubModelIds<TModel>(modelId).FilterByType<TSubModel>();
+            lock (syncRoot)
+            {
+                return GetAllSubModelIds<TModel>(modelId).FilterByType<TSubModel>();
+            }
         }
 
         public List<TSubModel> GetAllSubModelsByType<TModel, TSubModel>(string modelId)
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            List<TSubModel> subModels = new List<TSubModel>();
-            var subModelIds = GetAllSubModelIdsByType<TModel, TSubModel>(modelId).ToArray();
-
-            List<string> values = Redis.GetValuesFromHash(RedisKeyFactory.SubModelKey<TModel>(modelId), subModelIds);
-            foreach (var v in values)
+            lock (syncRoot)
             {
-                if (!string.IsNullOrWhiteSpace(v))
-                {
-                    subModels.Add(JsonConvert.DeserializeObject<TSubModel>(v));
-                }
-            }
+                List<TSubModel> subModels = new List<TSubModel>();
+                var subModelIds = GetAllSubModelIdsByType<TModel, TSubModel>(modelId).ToArray();
 
-            return subModels;
+                List<string> values = Redis.GetValuesFromHash(RedisKeyFactory.SubModelKey<TModel>(modelId), subModelIds);
+                foreach (var v in values)
+                {
+                    if (!string.IsNullOrWhiteSpace(v))
+                    {
+                        subModels.Add(JsonConvert.DeserializeObject<TSubModel>(v));
+                    }
+                }
+
+                return subModels;
+            }
         }
 
-        public bool DeleteSubModel<TModel, TSubModel>(string modelId, string subModelId)
+        public virtual bool DeleteSubModel<TModel, TSubModel>(string modelId, string subModelId)
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            return Redis.RemoveEntryFromHash(RedisKeyFactory.SubModelKey<TModel>(modelId), GetKey<TSubModel>(subModelId));
+            lock (syncRoot)
+            {
+                return Redis.RemoveEntryFromHash(RedisKeyFactory.SubModelKey<TModel>(modelId), GetKey<TSubModel>(subModelId));
+            }
         }
 
         public bool ExistSubModel<TModel, TSubModel>(string modelId, string subModelId)
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            return Redis.HashContainsEntry(RedisKeyFactory.SubModelKey<TModel>(modelId), GetKey<TSubModel>(subModelId));
+            lock (syncRoot)
+            {
+                return Redis.HashContainsEntry(RedisKeyFactory.SubModelKey<TModel>(modelId), GetKey<TSubModel>(subModelId));
+            }
         }
         #endregion
 
@@ -371,49 +430,58 @@ namespace RedisMapper
         public List<string> FindIdsByConditions<T>(Dictionary<string, string> conditions)
             where T : IRedisModel
         {
-            List<string> conditionSets = new List<string>();
-            foreach (var key in conditions.Keys)
+            lock (syncRoot)
             {
-                conditionSets.Add(RedisKeyFactory.QueryKeyWithPropertyAndValue<T>(key, conditions[key]));
+                List<string> conditionSets = new List<string>();
+                foreach (var key in conditions.Keys)
+                {
+                    conditionSets.Add(RedisKeyFactory.QueryKeyWithPropertyAndValue<T>(key, conditions[key]));
+                }
+                return Redis.GetIntersectFromSets(conditionSets.ToArray()).ToList();
             }
-            return Redis.GetIntersectFromSets(conditionSets.ToArray()).ToList();
         }
 
         public List<string> FindIdsByValueRange<T>(string propertyName, double? start, double? end)
             where T : IRedisModel
         {
-            if (!start.HasValue)
+            lock (syncRoot)
             {
-                start = double.MinValue;
-            }
+                if (!start.HasValue)
+                {
+                    start = double.MinValue;
+                }
 
-            if (!end.HasValue)
-            {
-                end = double.MaxValue;
-            }
+                if (!end.HasValue)
+                {
+                    end = double.MaxValue;
+                }
 
-            IDictionary<string, double> appIds =
-                Redis.GetRangeWithScoresFromSortedSetByLowestScore(RedisKeyFactory.QueryKeyWithProperty<T>(propertyName), start.GetValueOrDefault(), end.GetValueOrDefault());
-            return appIds.Keys.ToList();
+                IDictionary<string, double> appIds =
+                    Redis.GetRangeWithScoresFromSortedSetByLowestScore(RedisKeyFactory.QueryKeyWithProperty<T>(propertyName), start.GetValueOrDefault(), end.GetValueOrDefault());
+                return appIds.Keys.ToList();
+            }
         }
 
         public List<string> FindIdsByValueRange<T>(string propertyName, DateTime? start, DateTime? end)
             where T : IRedisModel
         {
-            if (!start.HasValue)
+            lock (syncRoot)
             {
-                start = DateTime.MinValue;
+                if (!start.HasValue)
+                {
+                    start = DateTime.MinValue;
+                }
+
+                if (!end.HasValue)
+                {
+                    end = DateTime.MaxValue;
+                }
+
+                IDictionary<string, double> appIds =
+                    Redis.GetRangeWithScoresFromSortedSetByLowestScore(RedisKeyFactory.QueryKeyWithProperty<T>(propertyName), start.GetValueOrDefault().Ticks, end.GetValueOrDefault().Ticks);
+
+                return appIds.Keys.ToList();
             }
-
-            if (!end.HasValue)
-            {
-                end = DateTime.MaxValue;
-            }
-
-            IDictionary<string, double> appIds =
-                Redis.GetRangeWithScoresFromSortedSetByLowestScore(RedisKeyFactory.QueryKeyWithProperty<T>(propertyName), start.GetValueOrDefault().Ticks, end.GetValueOrDefault().Ticks);
-
-            return appIds.Keys.ToList();
         }
 
         public List<string> Find<T>(Expression<Func<T, bool>> expression)
@@ -441,12 +509,18 @@ namespace RedisMapper
         public List<string> FuzzyFindIdsByCondition<T>(string property, string valuePattern)
             where T : IRedisModel
         {
-            return Redis.GetUnionFromSets(KeyFuzzyFind(RedisKeyFactory.QueryKeyWithPropertyAndValue<T>(property, valuePattern)).ToArray()).ToList();
+            lock (syncRoot)
+            {
+                return Redis.GetUnionFromSets(KeyFuzzyFind(RedisKeyFactory.QueryKeyWithPropertyAndValue<T>(property, valuePattern)).ToArray()).ToList();
+            }
         }
 
         public List<string> KeyFuzzyFind(string generalKeyPattern)
         {
-            return Redis.SearchKeys(generalKeyPattern);
+            lock (syncRoot)
+            {
+                return Redis.SearchKeys(generalKeyPattern);
+            }
         }
         #endregion
 
@@ -528,6 +602,31 @@ namespace RedisMapper
         #endregion
 
         #region Helpers
+        private bool TryPing(string strIpAddress, int intPort, int nTimeoutMsec)
+        {
+            Socket connSocket = null;
+            try
+            {
+                connSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                connSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, false);
+
+
+                IAsyncResult result = connSocket.BeginConnect(strIpAddress, intPort, null, null);
+                bool success = result.AsyncWaitHandle.WaitOne(nTimeoutMsec, true);
+
+                return connSocket.Connected;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (null != connSocket)
+                    connSocket.Close();
+            }
+        }
+
         private void BuildIndexForDynamicElements<T, TCustomProperty>(string modelId, TCustomProperty customProperty, bool isRemoveIndex = false)
             where T : IRedisModel
             where TCustomProperty : IRedisModel, IRedisCustomProperty
@@ -558,7 +657,7 @@ namespace RedisMapper
 
         }
 
-        private string GetKey<T>(T model) where T : IRedisModel
+        protected string GetKey<T>(T model) where T : IRedisModel
         {
             return RedisKeyFactory.ModelKey<T>(model.Id);
         }
@@ -614,21 +713,43 @@ namespace RedisMapper
         #region Queue
         public void AddItemToQueue<T>(string queueId, T queueItem)
         {
-            Redis.AddItemToList(RedisKeyFactory.QueueKey<T>(queueId), JsonConvert.SerializeObject(queueItem));
+            lock (syncRoot)
+            {
+                Redis.AddItemToList(RedisKeyFactory.QueueKey<T>(queueId), JsonConvert.SerializeObject(queueItem));
+            }
         }
 
         public T RetrieveItemFromQueue<T>(string queueId)
         {
-            var result = Redis.BlockingDequeueItemFromList(RedisKeyFactory.QueueKey<T>(queueId), new TimeSpan(0));
-
-            if (result != null)
+            lock (syncRoot)
             {
-                return JsonConvert.DeserializeObject<T>(result);
-            }
+                var result = Redis.BlockingDequeueItemFromList(RedisKeyFactory.QueueKey<T>(queueId), new TimeSpan(0));
 
-            return default(T);
+                if (result != null)
+                {
+                    return JsonConvert.DeserializeObject<T>(result);
+                }
+
+                return default(T);
+            }
         }
         #endregion
+
+        #region Misc
+        public bool IsAvailable(int connectionTimeoutMillesecs = 200)
+        {
+            if (TryPing(ConfigurationManager.AppSettings["redis_server"], ConfigurationManager.AppSettings["redis_server_port"].ToInt32(), connectionTimeoutMillesecs))
+            {
+                if (((RedisClient)Redis).Ping())
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        #endregion
+
 
         #region Dispose
         ~RedisService()
@@ -646,7 +767,10 @@ namespace RedisMapper
         {
             if (disposing)
             {
-                Redis.Dispose();
+                lock (syncRoot)
+                {
+                    Redis.Dispose();
+                }
             }
         }
         #endregion

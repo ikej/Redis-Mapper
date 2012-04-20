@@ -15,17 +15,13 @@ namespace RedisMapperTest
     {
         #region Service instance
         private static volatile IRedisService redisInstance;
-        private static object syncRoot = new Object();
         public static IRedisService Redis
         {
             get
             {
                 if (redisInstance == null)
                 {
-                    lock (syncRoot)
-                    {
-                        redisInstance = new RedisService();
-                    }
+                   redisInstance = new RedisService();
                 }
 
                 return redisInstance;
