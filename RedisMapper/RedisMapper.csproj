@@ -81,6 +81,9 @@
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <Reference Include="Youle.Mobile.Core">
+      <HintPath>..\lib\Youle.Mobile.Core.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="QueryFieldAttribute.cs">

@@ -15,11 +15,16 @@ namespace RedisMapper
                 {
                     ids[i] = RedisKeyFactory.ModelKey<T>(ids[i]);
                 }
-                return RedisService.Redis.GetValues<T>(ids);
             }
-            else
+
+            return GetValues<T>(ids);
+        }
+
+        private static List<T> GetValues<T>(List<string> ids)
+        {
+            using (var Redis = RedisService.RedisClientManager.GetReadOnlyClient())
             {
-                return RedisService.Redis.GetValues<T>(ids);
+                return Redis.GetValues<T>(ids);
             }
         }
 
@@ -59,6 +64,6 @@ namespace RedisMapper
             }
             return filtedIds;
         }
-        
+
     }
 }

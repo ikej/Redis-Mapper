@@ -11,25 +11,37 @@ using SubSonic.Query;
 using System.Collections;
 using System.Configuration;
 using System.Net.Sockets;
+using Youle.Mobile.Core;
 
 namespace RedisMapper
 {
     public class RedisService : IRedisService, IDisposable
     {
+
         #region Redis Client instance
-        private static IRedisClient redisInstance;
+        private static IRedisClientsManager _redisClientManager;
         private object syncRoot = new Object();
-        public static IRedisClient Redis
+        public static IRedisClientsManager RedisClientManager
         {
             get
             {
-                if (redisInstance == null)
+                if (_redisClientManager == null)
                 {
-                    PooledRedisClientManager redisClientManager = new PooledRedisClientManager(string.Format("{0}:{1}", ConfigurationManager.AppSettings["redis_server"], ConfigurationManager.AppSettings["redis_server_port"].ToInt32()));
-                    redisInstance = redisClientManager.GetClient();
+                    var redisConfig = new RedisClientManagerConfig
+                    {
+                        MaxWritePoolSize = AppConfigKeys.MAX_WRITE_POOL_SIZE.ConfigValue().ToInt32(),
+                        MaxReadPoolSize = AppConfigKeys.MAX_READ_POOL_SIZE.ConfigValue().ToInt32(),
+                        AutoStart = true
+                    };
+
+
+                    string[] readWriteHosts = AppConfigKeys.REDIS_READ_WRITE_SERVERS.ConfigValue().Split(';');
+                    string[] readOnlyHosts = AppConfigKeys.REDIS_READONLY_SERVERS.ConfigValue().Split(';');
+
+                    _redisClientManager = new PooledRedisClientManager(readWriteHosts, readOnlyHosts, redisConfig);
                 }
 
-                return redisInstance;
+                return _redisClientManager;
             }
         }
         #endregion
@@ -37,7 +49,7 @@ namespace RedisMapper
         #region CRUD operations
         public virtual string Add<T>(T model) where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetClient())
             {
                 if (model == null) return null;
                 if (string.IsNullOrWhiteSpace(model.Id))
@@ -69,7 +81,7 @@ namespace RedisMapper
         /// <param name="updatedApp">app instance after update</param>
         public virtual void UpdateWithRebuildIndex<T>(T originalModel, T updatedModel) where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetClient())
             {
                 if (originalModel == null) throw new ArgumentNullException("originalModel");
                 if (updatedModel == null) throw new ArgumentNullException("updatedModel");
@@ -83,7 +95,7 @@ namespace RedisMapper
 
         public virtual void Update<T>(T model) where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetClient())
             {
                 string modelKey = GetKey<T>(model);
                 Redis.Set<T>(modelKey, model);
@@ -92,7 +104,7 @@ namespace RedisMapper
 
         public virtual void Delete<T>(T model, bool IsRemoveSubModel = true) where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetClient())
             {
                 if (model != null)
                 {
@@ -119,7 +131,7 @@ namespace RedisMapper
 
         public void SetActive<T>(bool isActive, string id) where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetClient())
             {
                 if (isActive)
                 {
@@ -138,7 +150,7 @@ namespace RedisMapper
 
         public bool IsActive<T>(string id) where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 return Redis.SortedSetContainsItem(RedisKeyFactory.ListAllKeys<T>(), GetKey<T>(id));
             }
@@ -147,7 +159,7 @@ namespace RedisMapper
         public bool IsExist<T>(string id)
             where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 return Redis.ContainsKey(GetKey<T>(id));
             }
@@ -156,7 +168,7 @@ namespace RedisMapper
 
         public T Get<T>(string id) where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 return Redis.Get<T>(GetKey<T>(id));
             }
@@ -165,7 +177,7 @@ namespace RedisMapper
         public int GetAllCount<T>()
             where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 return Redis.Get<int>(RedisKeyFactory.ListAllNumKeys<T>());
             }
@@ -174,7 +186,7 @@ namespace RedisMapper
         public int NextId<T>()
              where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetClient())
             {
                 int id = Redis.Get<int>(RedisKeyFactory.NextKey<T>()) + 1;
 
@@ -190,7 +202,7 @@ namespace RedisMapper
 
         public List<string> GetAllActiveModelIds<T>() where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 return Redis.GetRangeFromSortedSetDesc(RedisKeyFactory.ListAllKeys<T>(), 0, -1);
             }
@@ -198,7 +210,7 @@ namespace RedisMapper
 
         public List<string> GetPagedModelIds<T>(int pageNum, int pageSize, string propertyName = "", bool isAsc = false) where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 int start = (pageNum - 1) * pageSize;
                 int end = pageNum * pageSize - 1;
@@ -237,7 +249,7 @@ namespace RedisMapper
 
         public List<T> GetValuesByIds<T>(List<string> ids, bool needKeyFormat = false)
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 List<T> results = new List<T>();
                 if (needKeyFormat)
@@ -263,7 +275,7 @@ namespace RedisMapper
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetClient())
             {
                 return Redis.SetEntryInHash(RedisKeyFactory.SubModelKey<TModel>(modelId), GetKey<TSubModel>(subModel), JsonConvert.SerializeObject(subModel));
             }
@@ -273,7 +285,7 @@ namespace RedisMapper
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 var subModelJSONString = Redis.GetValueFromHash(RedisKeyFactory.SubModelKey<TModel>(modelId), isFullSubModelKey ? subModelId : GetKey<TSubModel>(subModelId));
                 if (string.IsNullOrWhiteSpace(subModelJSONString))
@@ -290,7 +302,7 @@ namespace RedisMapper
         public List<string> GetAllSubModelIds<TModel>(string modelId)
             where TModel : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 return Redis.GetHashKeys(RedisKeyFactory.SubModelKey<TModel>(modelId));
             }
@@ -300,21 +312,18 @@ namespace RedisMapper
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            lock (syncRoot)
-            {
-                return GetAllSubModelIds<TModel>(modelId).FilterByType<TSubModel>();
-            }
+            return GetAllSubModelIds<TModel>(modelId).FilterByType<TSubModel>();
         }
 
         public List<TSubModel> GetAllSubModelsByType<TModel, TSubModel>(string modelId)
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            lock (syncRoot)
-            {
-                List<TSubModel> subModels = new List<TSubModel>();
-                var subModelIds = GetAllSubModelIdsByType<TModel, TSubModel>(modelId).ToArray();
 
+            List<TSubModel> subModels = new List<TSubModel>();
+            var subModelIds = GetAllSubModelIdsByType<TModel, TSubModel>(modelId).ToArray();
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
+            {
                 List<string> values = Redis.GetValuesFromHash(RedisKeyFactory.SubModelKey<TModel>(modelId), subModelIds);
                 foreach (var v in values)
                 {
@@ -332,7 +341,7 @@ namespace RedisMapper
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetClient())
             {
                 return Redis.RemoveEntryFromHash(RedisKeyFactory.SubModelKey<TModel>(modelId), GetKey<TSubModel>(subModelId));
             }
@@ -342,7 +351,7 @@ namespace RedisMapper
             where TModel : IRedisModel
             where TSubModel : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 return Redis.HashContainsEntry(RedisKeyFactory.SubModelKey<TModel>(modelId), GetKey<TSubModel>(subModelId));
             }
@@ -430,13 +439,14 @@ namespace RedisMapper
         public List<string> FindIdsByConditions<T>(Dictionary<string, string> conditions)
             where T : IRedisModel
         {
-            lock (syncRoot)
+
+            List<string> conditionSets = new List<string>();
+            foreach (var key in conditions.Keys)
             {
-                List<string> conditionSets = new List<string>();
-                foreach (var key in conditions.Keys)
-                {
-                    conditionSets.Add(RedisKeyFactory.QueryKeyWithPropertyAndValue<T>(key, conditions[key]));
-                }
+                conditionSets.Add(RedisKeyFactory.QueryKeyWithPropertyAndValue<T>(key, conditions[key]));
+            }
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
+            {
                 return Redis.GetIntersectFromSets(conditionSets.ToArray()).ToList();
             }
         }
@@ -444,39 +454,41 @@ namespace RedisMapper
         public List<string> FindIdsByValueRange<T>(string propertyName, double? start, double? end)
             where T : IRedisModel
         {
-            lock (syncRoot)
+
+            if (!start.HasValue)
             {
-                if (!start.HasValue)
-                {
-                    start = double.MinValue;
-                }
+                start = double.MinValue;
+            }
 
-                if (!end.HasValue)
-                {
-                    end = double.MaxValue;
-                }
-
+            if (!end.HasValue)
+            {
+                end = double.MaxValue;
+            }
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
+            {
                 IDictionary<string, double> appIds =
                     Redis.GetRangeWithScoresFromSortedSetByLowestScore(RedisKeyFactory.QueryKeyWithProperty<T>(propertyName), start.GetValueOrDefault(), end.GetValueOrDefault());
+
                 return appIds.Keys.ToList();
             }
+
         }
 
         public List<string> FindIdsByValueRange<T>(string propertyName, DateTime? start, DateTime? end)
             where T : IRedisModel
         {
-            lock (syncRoot)
+
+            if (!start.HasValue)
             {
-                if (!start.HasValue)
-                {
-                    start = DateTime.MinValue;
-                }
+                start = DateTime.MinValue;
+            }
 
-                if (!end.HasValue)
-                {
-                    end = DateTime.MaxValue;
-                }
-
+            if (!end.HasValue)
+            {
+                end = DateTime.MaxValue;
+            }
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
+            {
                 IDictionary<string, double> appIds =
                     Redis.GetRangeWithScoresFromSortedSetByLowestScore(RedisKeyFactory.QueryKeyWithProperty<T>(propertyName), start.GetValueOrDefault().Ticks, end.GetValueOrDefault().Ticks);
 
@@ -509,7 +521,7 @@ namespace RedisMapper
         public List<string> FuzzyFindIdsByCondition<T>(string property, string valuePattern)
             where T : IRedisModel
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 return Redis.GetUnionFromSets(KeyFuzzyFind(RedisKeyFactory.QueryKeyWithPropertyAndValue<T>(property, valuePattern)).ToArray()).ToList();
             }
@@ -517,7 +529,7 @@ namespace RedisMapper
 
         public List<string> KeyFuzzyFind(string generalKeyPattern)
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetReadOnlyClient())
             {
                 return Redis.SearchKeys(generalKeyPattern);
             }
@@ -529,13 +541,16 @@ namespace RedisMapper
             where T : IRedisModel
         {
             string queryKey = RedisKeyFactory.QueryKeyWithPropertyAndValue<T>(propertyName, value);
-            if (isRemoveIndex)
+            using (var Redis = RedisClientManager.GetClient())
             {
-                Redis.RemoveItemFromSet(queryKey, idVal);
-            }
-            else
-            {
-                Redis.AddItemToSet(queryKey, idVal);
+                if (isRemoveIndex)
+                {
+                    Redis.RemoveItemFromSet(queryKey, idVal);
+                }
+                else
+                {
+                    Redis.AddItemToSet(queryKey, idVal);
+                }
             }
         }
 
@@ -543,19 +558,22 @@ namespace RedisMapper
             where T : IRedisModel
         {
             string queryKey = RedisKeyFactory.QueryKeyWithProperty<T>(propertyName);
-            if (isRemoveIndex)
+            using (var Redis = RedisClientManager.GetClient())
             {
-                Redis.RemoveItemFromSortedSet(queryKey, idVal);
-            }
-            else
-            {
-                if (value.GetType().Equals(typeof(DateTime)))
+                if (isRemoveIndex)
                 {
-                    Redis.AddItemToSortedSet(queryKey, idVal, ((DateTime)value).Ticks);
+                    Redis.RemoveItemFromSortedSet(queryKey, idVal);
                 }
                 else
                 {
-                    Redis.AddItemToSortedSet(queryKey, idVal, Convert.ToDouble(value));
+                    if (value.GetType().Equals(typeof(DateTime)))
+                    {
+                        Redis.AddItemToSortedSet(queryKey, idVal, ((DateTime)value).Ticks);
+                    }
+                    else
+                    {
+                        Redis.AddItemToSortedSet(queryKey, idVal, Convert.ToDouble(value));
+                    }
                 }
             }
         }
@@ -602,8 +620,16 @@ namespace RedisMapper
         #endregion
 
         #region Helpers
-        private bool TryPing(string strIpAddress, int intPort, int nTimeoutMsec)
+        private bool TryPing(string strIpAddressWithPort, int nTimeoutMsec)
         {
+            var tempArray = strIpAddressWithPort.Split(':');
+            if (tempArray == null || tempArray.Length < 2)
+            {
+                return false;
+            }
+
+            var strIpAddress = tempArray[0];
+            var intPort = tempArray[1].ToInt32();
             Socket connSocket = null;
             try
             {
@@ -713,7 +739,7 @@ namespace RedisMapper
         #region Queue
         public void AddItemToQueue<T>(string queueId, T queueItem)
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetClient())
             {
                 Redis.AddItemToList(RedisKeyFactory.QueueKey<T>(queueId), JsonConvert.SerializeObject(queueItem));
             }
@@ -721,7 +747,7 @@ namespace RedisMapper
 
         public T RetrieveItemFromQueue<T>(string queueId)
         {
-            lock (syncRoot)
+            using (var Redis = RedisClientManager.GetClient())
             {
                 var result = Redis.BlockingDequeueItemFromList(RedisKeyFactory.QueueKey<T>(queueId), new TimeSpan(0));
 
@@ -738,11 +764,18 @@ namespace RedisMapper
         #region Misc
         public bool IsAvailable(int connectionTimeoutMillesecs = 200)
         {
-            if (TryPing(ConfigurationManager.AppSettings["redis_server"], ConfigurationManager.AppSettings["redis_server_port"].ToInt32(), connectionTimeoutMillesecs))
+            var redisServers = AppConfigKeys.REDIS_READ_WRITE_SERVERS.ConfigValue().Split(';');
+            if (redisServers.Length > 0)
             {
-                if (((RedisClient)Redis).Ping())
+                if (TryPing(redisServers[0], connectionTimeoutMillesecs))
                 {
-                    return true;
+                    using (var Redis = RedisClientManager.GetReadOnlyClient())
+                    {
+                        if (((RedisClient)Redis).Ping())
+                        {
+                            return true;
+                        }
+                    }
                 }
             }
 
@@ -750,6 +783,13 @@ namespace RedisMapper
         }
         #endregion
 
+        public void FlushAll()
+        {
+            using (var Redis = RedisClientManager.GetClient())
+            {
+                Redis.FlushAll();
+            }
+        }
 
         #region Dispose
         ~RedisService()
@@ -767,7 +807,7 @@ namespace RedisMapper
         {
             if (disposing)
             {
-                lock (syncRoot)
+                using (var Redis = RedisClientManager.GetClient())
                 {
                     Redis.Dispose();
                 }
