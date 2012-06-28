@@ -1,0 +1,47 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Youle.Mobile.RedisMapper", "Youle.Mobile.RedisMapper\Youle.Mobile.RedisMapper.csproj", "{E3F95DFF-1613-4AA2-B26B-479A7650AAF4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Youle.Mobile.Core", "Youle.Mobile.Core\Youle.Mobile.Core.csproj", "{EB6AA93C-3EAE-4EC2-847C-E3659E57C6ED}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedisMapperTest", "RedisMapperTest\RedisMapperTest.csproj", "{2590B90E-736E-42A1-82F3-FFB5563576F6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Youle.Mobile.Infrastructure.AppStore.Models", "Youle.Mobile.Infrastructure.AppStore.Models\Youle.Mobile.Infrastructure.AppStore.Models.csproj", "{48E9954C-80F3-4360-80B4-576E6DBE3893}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Live|Any CPU = Live|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E3F95DFF-1613-4AA2-B26B-479A7650AAF4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E3F95DFF-1613-4AA2-B26B-479A7650AAF4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E3F95DFF-1613-4AA2-B26B-479A7650AAF4}.Live|Any CPU.ActiveCfg = Live|Any CPU
+		{E3F95DFF-1613-4AA2-B26B-479A7650AAF4}.Live|Any CPU.Build.0 = Live|Any CPU
+		{E3F95DFF-1613-4AA2-B26B-479A7650AAF4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E3F95DFF-1613-4AA2-B26B-479A7650AAF4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EB6AA93C-3EAE-4EC2-847C-E3659E57C6ED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EB6AA93C-3EAE-4EC2-847C-E3659E57C6ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EB6AA93C-3EAE-4EC2-847C-E3659E57C6ED}.Live|Any CPU.ActiveCfg = Live|Any CPU
+		{EB6AA93C-3EAE-4EC2-847C-E3659E57C6ED}.Live|Any CPU.Build.0 = Live|Any CPU
+		{EB6AA93C-3EAE-4EC2-847C-E3659E57C6ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EB6AA93C-3EAE-4EC2-847C-E3659E57C6ED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2590B90E-736E-42A1-82F3-FFB5563576F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2590B90E-736E-42A1-82F3-FFB5563576F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2590B90E-736E-42A1-82F3-FFB5563576F6}.Live|Any CPU.ActiveCfg = Release|Any CPU
+		{2590B90E-736E-42A1-82F3-FFB5563576F6}.Live|Any CPU.Build.0 = Release|Any CPU
+		{2590B90E-736E-42A1-82F3-FFB5563576F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2590B90E-736E-42A1-82F3-FFB5563576F6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{48E9954C-80F3-4360-80B4-576E6DBE3893}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{48E9954C-80F3-4360-80B4-576E6DBE3893}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{48E9954C-80F3-4360-80B4-576E6DBE3893}.Live|Any CPU.ActiveCfg = Live|Any CPU
+		{48E9954C-80F3-4360-80B4-576E6DBE3893}.Live|Any CPU.Build.0 = Live|Any CPU
+		{48E9954C-80F3-4360-80B4-576E6DBE3893}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{48E9954C-80F3-4360-80B4-576E6DBE3893}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

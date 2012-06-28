@@ -1,0 +1,117 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{48E9954C-80F3-4360-80B4-576E6DBE3893}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Youle.Mobile.Infrastructure.AppStore.Models</RootNamespace>
+    <AssemblyName>Youle.Mobile.Infrastructure.AppStore.Models</AssemblyName>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <SccProjectName>
+    </SccProjectName>
+    <SccLocalPath>
+    </SccLocalPath>
+    <SccAuxPath>
+    </SccAuxPath>
+    <SccProvider>
+    </SccProvider>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\..\bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>..\..\bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Live|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>..\..\bin\Live\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.ComponentModel.DataAnnotations" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="App.cs" />
+    <Compile Include="AppColumn.cs" />
+    <Compile Include="AppList.cs" />
+    <Compile Include="AppProject.cs" />
+    <Compile Include="AppStoreEnums.cs" />
+    <Compile Include="AppVersion.cs" />
+    <Compile Include="AppSettingsForAppList.cs" />
+    <Compile Include="Category.cs" />
+    <Compile Include="ClientImageInfo.cs" />
+    <Compile Include="AttributeValueAlias.cs" />
+    <Compile Include="Tag\AppInTag.cs" />
+    <Compile Include="Tag\AppProjectInTag.cs" />
+    <Compile Include="Tag\TagInAppProject.cs" />
+    <Compile Include="Tag\TagInApp.cs" />
+    <Compile Include="CustomProperty.cs" />
+    <Compile Include="DeviceModel.cs" />
+    <Compile Include="Element.cs" />
+    <Compile Include="ElementDetail.cs" />
+    <Compile Include="GameCenter\Announcement.cs" />
+    <Compile Include="ImageInfo.cs" />
+    <Compile Include="PlatformType.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="RedisSupprot\RedisModelBase.cs" />
+    <Compile Include="Tag\Tag.cs" />
+    <Compile Include="UserDataAccessControl\IntegratorInDesignCompany.cs" />
+    <Compile Include="UserDataAccessControl\DesignCompany.cs" />
+    <Compile Include="UserDataAccessControl\AppProjectInDesignCompany.cs" />
+    <Compile Include="UserDataAccessControl\Integrator.cs" />
+    <Compile Include="UserDataAccessControl\UserInDesignCompany.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="UserInteract\DownloadAPKPushItem.cs" />
+    <Compile Include="UserInteract\ScriptPushItem.cs" />
+    <Compile Include="UserInteract\PushConfig.cs" />
+    <Compile Include="UserInteract\PushItem.cs" />
+    <Compile Include="UserInteract\SMSPushItem.cs" />
+    <Compile Include="UserInteract\WAPPushItem.cs" />
+    <Compile Include="UserInteract\WebPushItem.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ServiceStack.Redis\ServiceStack.Redis.csproj">
+      <Project>{AF99F19B-4C04-4F58-81EF-B092F1FCC540}</Project>
+      <Name>ServiceStack.Redis</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Youle.Mobile.Core\Youle.Mobile.Core.csproj">
+      <Project>{EB6AA93C-3EAE-4EC2-847C-E3659E57C6ED}</Project>
+      <Name>Youle.Mobile.Core</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
