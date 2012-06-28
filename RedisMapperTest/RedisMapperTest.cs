@@ -2,33 +2,18 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using RedisMapper;
 using Newtonsoft.Json;
 using Xunit;
 using System.Collections.Specialized;
 using Moq;
-using RedisMapperTest.TestModel;
+using Youle.Mobile.RedisMapper;
+using Youle.Mobile.Infrastructure.AppStore.Models;
 
 namespace RedisMapperTest
 {
     public class RedisMapperTest
     {
-        #region Service instance
-        private static volatile IRedisService redisInstance;
-        public static IRedisService Redis
-        {
-            get
-            {
-                if (redisInstance == null)
-                {
-                   redisInstance = new RedisService();
-                }
-
-                return redisInstance;
-            }
-        }
-        #endregion
-
+        private  IRedisService redisInstance = new RedisService();
 
         [Fact]
         public void Same_model_to_save_twice_will_update_the_existed_values()

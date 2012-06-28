@@ -52,18 +52,24 @@
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RedisMapperTest.cs" />
-    <Compile Include="TestModel\App.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\RedisMapper\RedisMapper.csproj">
-      <Project>{E3F95DFF-1613-4AA2-B26B-479A7650AAF4}</Project>
-      <Name>RedisMapper</Name>
-    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="..\Youle.Mobile.Core\Youle.Mobile.Core.csproj">
+      <Project>{EB6AA93C-3EAE-4EC2-847C-E3659E57C6ED}</Project>
+      <Name>Youle.Mobile.Core</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Youle.Mobile.Infrastructure.AppStore.Models\Youle.Mobile.Infrastructure.AppStore.Models.csproj">
+      <Project>{48E9954C-80F3-4360-80B4-576E6DBE3893}</Project>
+      <Name>Youle.Mobile.Infrastructure.AppStore.Models</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Youle.Mobile.RedisMapper\Youle.Mobile.RedisMapper.csproj">
+      <Project>{E3F95DFF-1613-4AA2-B26B-479A7650AAF4}</Project>
+      <Name>Youle.Mobile.RedisMapper</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
